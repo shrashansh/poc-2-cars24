@@ -1,0 +1,24 @@
+# Render blueprint: New > Blueprint > pick this repo. One web service in simple mode.
+services:
+  - type: web
+    name: cars24-complaint-command-center
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: BASE_URL
+        sync: false            # set to the service URL, e.g. https://cars24-complaint-command-center.onrender.com
+      - key: RUN_MODE
+        value: simple
+      - key: SLA_SECONDS_PER_HOUR
+        value: "30"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PHONE_SALT
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false            # optional: turns on the LLM classifier
+    disk:
+      name: ccc-data
+      mountPath: /data
+      sizeGB: 1

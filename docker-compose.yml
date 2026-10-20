@@ -1,0 +1,36 @@
+# Simple mode (one container):       docker compose up web
+# Celery mode (web + workers + beat): docker compose --profile celery up
+services:
+  web:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      BASE_URL: http://localhost:8000
+      RUN_MODE: ${RUN_MODE:-simple}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SLA_SECONDS_PER_HOUR: ${SLA_SECONDS_PER_HOUR:-30}
+    volumes: [ccc-data:/data]
+
+  redis:
+    image: redis:7.4-alpine
+    profiles: [celery]
+
+  worker:
+    build: .
+    profiles: [celery]
+    command: celery -A ccc.celery_app worker -Q ingest,nlp,sla -l info --concurrency 4
+    environment: { RUN_MODE: celery, REDIS_URL: redis://redis:6379/0, BASE_URL: http://localhost:8000, OPENAI_API_KEY: "${OPENAI_API_KEY:-}" }
+    volumes: [ccc-data:/data]
+    depends_on: [redis]
+
+  beat:
+    build: .
+    profiles: [celery]
+    command: celery -A ccc.celery_app beat -l info
+    environment: { RUN_MODE: celery, REDIS_URL: redis://redis:6379/0 }
+    volumes: [ccc-data:/data]
+    depends_on: [redis]
+
+volumes:
+  ccc-data:

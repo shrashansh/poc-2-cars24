@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your case {{ ctx.case_ref }} · Cars24</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="customer">
+<div class="cust">
+  <div class="logo">CARS<span>24</span></div>
+  {% set done = verified or step == 'done' %}
+  <div class="card">
+    <p class="note" style="margin:0">We saw your post on {{ PLATFORM_NAMES.get(ctx.platform, ctx.platform) }} as “{{ ctx.display_name or ctx.handle }}”.</p>
+    <h1>Case <span class="mono" style="font-size:18px">{{ ctx.case_ref }}</span></h1>
+    <p style="margin:4px 0">{{ ctx.theme|theme_label }} · with our <b>{{ ctx.owner_team }}</b> team</p>
+    <p class="note" style="margin:0">Status: <b>{{ STATUS_TEXT.get(ctx.case_status, ctx.case_status) }}</b>
+      {% if ctx.case_status in ('routed','new') %}· first update due {{ ctx.first_action_due[:16].replace('T', ' ') }} UTC{% endif %}</p>
+    <div class="steps">{% for i in range(4) %}<div class="{{ 'on' if (i == 0) or (i == 1 and done) or (i == 2 and ctx.case_status in ('in_progress','resolved')) or (i == 3 and ctx.case_status == 'resolved') }}"></div>{% endfor %}</div>
+    <div class="stepnames"><span>Received</span><span>You're verified</span><span>Team working</span><span>Resolved</span></div>
+  </div>
+
+  {% if not done %}
+  <div class="card">
+    {% if step == 'start' %}
+      <h2>Confirm it's you, so the team can act</h2>
+      <p class="note">We've already noted what you wrote:</p>
+      <blockquote style="margin:6px 0 12px;padding:8px 12px;background:#F3F6FC;border-radius:8px">{{ ctx.body[:240] }}{{ '…' if ctx.body|length > 240 }}</blockquote>
+      <form method="post" action="{{ url_for('link_otp', token=ctx.token) }}">
+        <label for="phone">Mobile number you used with Cars24</label>
+        <input type="tel" id="phone" name="phone" placeholder="98110 00001" autocomplete="tel" inputmode="tel">
+        <div class="row" style="margin-top:12px"><button class="btn primary">Send code</button></div>
+        <p class="note">No appointment ID needed. We'll show your bookings and you pick the car.</p>
+      </form>
+    {% elif step == 'otp' %}
+      <h2>Enter the 6-digit code</h2>
+      <form method="post" action="{{ url_for('link_verify', token=ctx.token) }}">
+        <label for="code">Code sent by SMS</label>
+        <input type="text" id="code" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" value="{{ otp or '' }}">
+        <div class="row" style="margin-top:12px"><button class="btn primary">Verify</button></div>
+      </form>
+      {% if otp %}<div class="demo-otp">Demo mode: there's no SMS gateway in the POC, so the code is filled in for you: <b class="mono">{{ otp }}</b></div>{% endif %}
+    {% elif step == 'pick' %}
+      <h2>Which car is this about?</h2>
+      {% if bookings %}
+      <form method="post" action="{{ url_for('link_confirm', token=ctx.token) }}">
+        {% for b in bookings %}
+          <label class="carpick"><input type="radio" name="booking_ref" value="{{ b.booking_ref }}" {{ 'checked' if loop.first }}>
+            <b>{{ b.model }}</b> · {{ b.kind }} · {{ b.hub }}, {{ b.city }} · {{ b.booking_date }}</label>
+        {% endfor %}
+        <div class="row" style="margin-top:12px"><button class="btn primary">Confirm</button></div>
+      </form>
+      {% else %}<p>We couldn't find bookings on that number. Our team will contact you on the platform where you posted.</p>{% endif %}
+    {% endif %}
+    {% if err %}<p class="err">{{ err }}</p>{% endif %}
+  </div>
+  {% else %}
+  <div class="card">
+    <h2>Thanks, you're verified</h2>
+    <p>Your case is linked to your car and booking. Updates will show here and in your email. You don't need to post again; if you do, it lands on this same case.</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Updates</h2>
+    <ul class="timeline">
+      {% for e in timeline %}<li><span class="t">{{ e.created_at[5:16].replace('T', ' ') }}</span><span>{{ {'case_opened':'We received your complaint','routed':'Assigned to the owning team','first_action':'The team started working on it','escalated':'Escalated to a senior manager','identity_confirmed':'You confirmed your car','resolved':'Resolved','reply_posted':'We replied publicly','case_merged':'Your other posts were joined to this case'}.get(e.event_type, e.event_type) }}</span></li>{% endfor %}
+    </ul>
+  </div>
+  <p class="note">This page is only for case {{ ctx.case_ref }}. The link holds no personal details.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Complaint Command Center{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="{{ url_for('dashboard') }}">Cars24 · Complaint <span>Command Center</span></a>
+  <nav class="main">
+    <a href="{{ url_for('dashboard') }}">Cases</a>
+    {% for p, n in PLATFORM_NAMES.items() %}<a href="{{ url_for('platform_view', platform=p) }}">{{ n }}</a>{% endfor %}
+  </nav>
+  <span class="mode">mode: {{ config.RUN_MODE }} · classifier: {{ 'LLM' if config.OPENAI_API_KEY else 'rules' }}</span>
+</div></header>
+<main class="wrap">
+  {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

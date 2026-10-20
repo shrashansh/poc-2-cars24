@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ case.case_ref }} · Complaint Command Center{% endblock %}
+{% block body %}
+{% set s = case|sla %}{% set facts = case.facts|fromjson %}
+<p class="note"><a href="{{ url_for('dashboard') }}">← All cases</a></p>
+<div class="row" style="justify-content:space-between;align-items:flex-start">
+  <div>
+    <h1><span class="ref" style="font-size:20px">{{ case.case_ref }}</span> · {{ case.theme|theme_label }}</h1>
+    <p class="sub">{{ case.summary }}</p>
+  </div>
+  <div class="row">
+    {% if case.status in ('routed','new') %}<form class="inline" method="post" action="{{ url_for('act_first', ref=case.case_ref) }}"><button class="btn primary">Take first action</button></form>{% endif %}
+    {% if case.status != 'resolved' %}
+      <form class="inline" method="post" action="{{ url_for('act_fix', ref=case.case_ref) }}"><button class="btn" title="Demo only">Demo: team fixes it in Cars24 systems</button></form>
+      <form class="inline" method="post" action="{{ url_for('act_resolve', ref=case.case_ref) }}"><button class="btn warn">Resolve (needs proof)</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b>{{ case.owner_team }}</b><small>owner</small></div>
+  <div class="kpi {{ 'alert' if case.priority == 1 }}"><b>P{{ case.priority }}</b><small>{{ 'critical' if case.priority == 1 else 'priority' }}</small></div>
+  <div class="kpi {{ 'alert' if s[0] == 'late' }}"><b class="sla-{{ s[0] }}" style="font-size:18px">{{ s[1] or '—' }}</b><small>first-action SLA</small></div>
+  <div class="kpi {{ 'warn' if case.escalation_level > 1 }}"><b>L{{ case.escalation_level }}</b><small>{{ LADDER[case.escalation_level] }}</small></div>
+  <div class="kpi"><b><span class="pill id-{{ case.identity_status }}" style="font-size:14px">{{ case.identity_status }}</span></b><small>customer identity</small></div>
+  <div class="kpi"><b>{{ STATUS_TEXT.get(case.status, case.status) }}</b><small>status</small></div>
+</div>
+
+<div class="grid">
+  <div>
+    <section class="panel">
+      <h2>Posts on this case ({{ posts|length }})</h2>
+      {% for p in posts %}{% set ids = p.extracted_ids|fromjson %}
+        <div class="post">
+          <div class="meta"><b>{{ p.platform|platform }}</b><span>{{ p.display_name or p.handle }}</span><span class="tag">account {{ p.platform_user_id }}</span>
+            {% if p.rating %}<span>{{ p.rating }}★</span>{% endif %}<span>{{ p.posted_at|ago }}</span><span class="tag">{{ p.theme }}</span>
+            {% if p.language == 'hinglish' %}<span class="tag">Hinglish</span>{% endif %}{% if p.legal_risk %}<span class="pill p1">legal risk</span>{% endif %}
+            {% if p.version > 1 %}<span class="tag">edited · v{{ p.version }}</span>{% endif %}
+            <span class="tag">{{ p.classifier }}</span></div>
+          {% if p.title %}<b>{{ p.title }}</b><br>{% endif %}{{ p.body_masked }}
+          {% for v in versions[p.post_id] %}<div class="note">v{{ v.version }} ({{ v.rating }}★): {{ v.body[:160] }}…</div>{% endfor %}
+          {% if ids %}<div class="note">Read from the text: {% for k2, v2 in ids.items() %}<span class="tag">{{ k2 }} {{ v2 }}</span> {% endfor %}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </section>
+
+    <section class="panel">
+      <h2>Public replies</h2>
+      {% for r in replies %}
+        <div class="reply {{ 'draft' if r.status == 'draft' }}">
+          <div class="note">{{ r.platform|platform }} · {{ r.kind }} · {{ 'draft by agent, needs approval' if r.status == 'draft' else 'posted ' ~ (r.posted_at|ago) ~ ' · approved by ' ~ r.approved_by }}</div>
+          {{ r.body }}
+          {% if r.status == 'draft' %}<form method="post" action="{{ url_for('act_approve', rid=r.reply_id) }}" style="margin-top:6px"><button class="btn primary">Approve and post</button></form>{% endif %}
+        </div>
+      {% else %}<p class="note">No replies yet.</p>{% endfor %}
+    </section>
+  </div>
+
+  <aside>
+    <section class="panel">
+      <h2>Dedicated case link</h2>
+      {% for l in links %}
+        <p><a class="mono" href="{{ link_url(l.token) }}" target="_blank" rel="noopener">{{ link_url(l.token) }}</a></p>
+        <p class="note">Issued for the {{ l.platform|platform }} account · status <b>{{ l.status }}</b> · opened {{ l.click_count }}×. One link per person per case; posting again reuses it.</p>
+      {% endfor %}
+    </section>
+
+    <section class="panel">
+      <h2>Who is this?</h2>
+      {% if booking %}
+        <dl class="facts">
+          <dt>Cars24 customer</dt><dd>{{ booking.name }} · {{ booking.crm_ref }}</dd>
+          <dt>Car</dt><dd>{{ booking.model }} · <span class="mono">{{ booking.reg_no or '—' }}</span></dd>
+          <dt>Booking</dt><dd><span class="mono">{{ booking.booking_ref }}</span> · {{ booking.kind }} · {{ booking.hub }}, {{ booking.city }} · {{ booking.booking_date }}</dd>
+        </dl>
+      {% endif %}
+      {% for m in matches %}
+        <div class="post">
+          <div class="meta"><span class="tag">{{ m.method }}</span><span>confidence {{ '%.0f'|format(m.confidence * 100) }}%</span>{% if m.confirmed_by %}<span class="pill id-confirmed">confirmed by {{ m.confirmed_by }}</span>{% endif %}</div>
+          {% if m.method == 'cross_channel' %}Looks like the same customer as <a class="ref" href="{{ url_for('case_page', ref=m.other_ref) }}">{{ m.other_ref }}</a> on another channel.
+          {% else %}{{ m.name }} · {{ m.model }} · {{ m.city }} · <span class="mono">{{ m.booking_ref }}</span>{% endif %}
+          {% if not m.confirmed_by %}<form method="post" action="{{ url_for('act_match', mid=m.match_id) }}" style="margin-top:6px"><button class="btn">{{ 'Merge cases' if m.method == 'cross_channel' else 'Confirm match' }}</button></form>{% endif %}
+        </div>
+      {% else %}{% if not booking %}<p class="note">No match in Cars24 records yet. The case link asks the customer to verify with phone + OTP.</p>{% endif %}{% endfor %}
+    </section>
+
+    {% if facts %}
+    <section class="panel">
+      <h2>Facts from Cars24 records</h2>
+      <pre class="mono" style="white-space:pre-wrap;margin:0">{{ facts|tojson(indent=2) }}</pre>
+      {% if case.amount_at_risk %}<p class="note">₹{{ "{:,.0f}".format(case.amount_at_risk) }} at risk on this case.</p>{% endif %}
+    </section>
+    {% endif %}
+
+    <section class="panel">
+      <h2>Timeline</h2>
+      <ul class="timeline">
+        {% for e in events %}{% set pl = e.payload|fromjson %}
+          <li><span class="t">{{ e.created_at[11:19] }}</span><span><b>{{ e.event_type.replace('_', ' ') }}</b> · {{ e.actor }}
+            {% for k2, v2 in pl.items() %}<span class="note">{{ k2 }}={{ v2 }}</span> {% endfor %}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+</div>
+{% endblock %}

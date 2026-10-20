@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ platform|platform }} (mock) · Complaint Command Center{% endblock %}
+{% block body %}
+<h1>{{ platform|platform }} <span class="note">· mock platform, what the public sees</span></h1>
+<p class="sub">These are the posts the {{ platform|platform }} collector reads. Replies appear here only after a person approves them on the case page.</p>
+{% for p in posts %}
+  <div class="platform-post">
+    <div class="note"><b>{{ p.display_name or p.handle }}</b> · {{ p.release_at|ago }}{% if p.edit_at and p.edit_at <= now %} · edited{% endif %}</div>
+    {% if p.rating %}<div class="stars">{{ '★' * p.rating }}{{ '☆' * (5 - p.rating) }}</div>{% endif %}
+    {% if p.title %}<b>{{ p.title }}</b><br>{% endif %}
+    {{ p.edit_body if (p.edit_at and p.edit_at <= now) else p.body }}
+    {% for r in reps.get(p.external_post_id, []) %}<div class="biz-reply"><b>Reply from Cars24</b> · {{ r.posted_at|ago }}<br>{{ r.body }}</div>{% endfor %}
+  </div>
+{% else %}<p class="note">Nothing posted here yet.</p>{% endfor %}
+{% endblock %}

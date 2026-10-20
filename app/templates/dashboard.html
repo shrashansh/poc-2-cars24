@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>Open complaints, every platform, one queue</h1>
+    <p class="sub">Collectors run every {{ config.COLLECT_EVERY }} s · SLA watchdog every {{ config.SLA_EVERY }} s · demo clock: 1 SLA hour = {{ config.SLA_SECONDS_PER_HOUR|int }} s
+      · {{ pending_feed }} more posts will arrive on the mock platforms during the demo.</p>
+  </div>
+  <span class="live"><i></i><span id="livestate">Live: refreshes on new activity</span> <button class="btn" type="button" id="pause">Pause</button></span>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b>{{ k.open }}</b><small>open cases</small></div>
+  <div class="kpi alert"><b>{{ k.critical }}</b><small>critical (legal / RC 6+ mo)</small></div>
+  <div class="kpi alert"><b>{{ k.overdue }}</b><small>first action overdue</small></div>
+  <div class="kpi warn"><b>{{ k.escalated }}</b><small>escalated above team queue</small></div>
+  <div class="kpi"><b>{{ k.posts }}</b><small>posts → {{ k.cases }} cases ({{ k.merged }} merged)</small></div>
+  <div class="kpi"><b>{{ k.confirmed }}/{{ k.cases }}</b><small>customers confirmed · {{ k.candidate }} candidates</small></div>
+  <div class="kpi"><b>₹{{ "{:,.0f}".format(k.at_risk) }}</b><small>at risk in open cases</small></div>
+  <div class="kpi warn"><b>{{ k.drafts }}</b><small>replies waiting for approval</small></div>
+</div>
+
+<div class="grid">
+  <div>
+    <section class="panel">
+      <h2>Cases</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Case</th><th>Problem</th><th>Owner</th><th>Priority</th><th>Posts</th><th>Customer</th><th>First action</th><th>Level</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for c in cases %}{% set s = c|sla %}
+          <tr class="{{ 'resolved' if c.status == 'resolved' }}">
+            <td><a class="ref" href="{{ url_for('case_page', ref=c.case_ref) }}">{{ c.case_ref }}</a>{% if c.legal_risk %}<br><span class="pill p1">legal</span>{% endif %}</td>
+            <td>{{ c.theme|theme_label }}<br><span class="note">{{ (c.summary or '')[:70] }}</span></td>
+            <td>{{ c.owner_team }}</td>
+            <td><span class="pill p{{ c.priority }}">P{{ c.priority }}</span></td>
+            <td>{{ c.posts }}<br><span class="plat">{% for p in (c.platforms or '').split(',') if p %}{{ p|platform }}{{ ', ' if not loop.last }}{% endfor %}</span></td>
+            <td><span class="pill id-{{ c.identity_status }}">{{ c.identity_status }}</span></td>
+            <td class="sla-{{ s[0] }}">{{ s[1] }}</td>
+            <td><span class="lvl {{ 'up' if c.escalation_level > 1 }}">L{{ c.escalation_level }}</span></td>
+            <td>{{ STATUS_TEXT.get(c.status, c.status) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="note">No cases yet. The collectors run in a few seconds, or press "Run collectors now".</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="panel">
+      <h2>Latest posts collected</h2>
+      <ul class="feed">
+      {% for p in feed %}
+        <li><div class="meta">{{ p.platform|platform }} · {{ p.display_name or p.handle }} · {% if p.rating %}{{ p.rating }}★ · {% endif %}posted {{ p.posted_at|ago }} · <span class="tag">{{ p.theme }}</span> {% if p.language == 'hinglish' %}<span class="tag">Hinglish</span>{% endif %} {% if p.version > 1 %}<span class="tag">edited v{{ p.version }}</span>{% endif %}
+          → <a class="ref" href="{{ url_for('case_page', ref=p.case_ref) }}">{{ p.case_ref }}</a></div>
+          {{ p.body_masked[:180] }}{{ '…' if p.body_masked|length > 180 }}</li>
+      {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <aside>
+    <section class="panel" id="simulate">
+      <h2>Post a complaint (live demo)</h2>
+      <form method="post" action="{{ url_for('act_simulate') }}">
+        <div class="two">
+          <div><label for="platform">Platform</label>
+            <select id="platform" name="platform">{% for p, n in PLATFORM_NAMES.items() %}<option value="{{ p }}">{{ n }}</option>{% endfor %}</select></div>
+          <div><label for="rating">Stars</label>
+            <select id="rating" name="rating"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="">none</option></select></div>
+        </div>
+        <label for="username">Name shown on the platform</label>
+        <input type="text" id="username" name="username" value="Demo Seller">
+        <label for="body">Complaint</label>
+        <textarea id="body" name="body">Paid ₹999 for Selling Pro after inspection, appointment ID APPT-61873. No auction happened and nobody replies about the refund.</textarea>
+        <div class="row" style="margin-top:10px"><button class="btn primary" type="submit">Post and collect</button></div>
+        <p class="note">Try the same name twice to see it land on the same case, or mention a reg no like DL3CAB4521.</p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Agents</h2>
+      <div class="row">
+        <form class="inline" method="post" action="{{ url_for('act_collect') }}"><button class="btn" type="submit">Run collectors now</button></form>
+        <form class="inline" method="post" action="{{ url_for('act_sla') }}"><button class="btn" type="submit">Run SLA watchdog</button></form>
+        <form class="inline" method="post" action="{{ url_for('act_reset') }}"><button class="btn" type="submit">Reset demo</button></form>
+      </div>
+      <table style="margin-top:10px">
+        <thead><tr><th>Collector</th><th>Last run</th><th>Fetched</th></tr></thead>
+        {% for w in wm %}<tr><td>{{ w.platform|platform }}</td><td>{{ w.last_run_at|ago }}</td><td>{{ w.fetched_total }}</td></tr>{% endfor %}
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>Case links: how far customers get</h2>
+      {% set f = funnel %}{% set top = (f.issued or 1) %}
+      <div class="funnel">
+        {% for name, v in [('Issued', f.issued or 0), ('Opened', f.opened or 0), ('Gave phone', f.submitted or 0), ('Verified', f.verified or 0)] %}
+        <div><span>{{ name }}</span><span class="bar"><i style="width: {{ (100 * v / top)|round|int }}%"></i></span><b>{{ v }}</b></div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Open by team</h2>
+      <table>{% for t in teams %}<tr><td>{{ t.owner_team }}</td><td style="text-align:right">{{ t.n }}{% if t.crit %} <span class="pill p1">{{ t.crit }} critical</span>{% endif %}</td></tr>{% endfor %}</table>
+      <p class="note">{{ k.ignored }} positive post(s) counted and left out of the queue.</p>
+    </section>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var version = {{ version }}, paused = false;
+  var btn = document.getElementById('pause'), label = document.getElementById('livestate');
+  btn.addEventListener('click', function () { paused = !paused; btn.textContent = paused ? 'Resume' : 'Pause'; label.textContent = paused ? 'Paused' : 'Live: refreshes on new activity'; });
+  setInterval(function () {
+    if (paused || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    fetch('{{ url_for("api_state") }}').then(function (r) { return r.json(); }).then(function (s) { if (s.version !== version) location.reload(); }).catch(function () {});
+  }, 4000);
+})();
+</script>
+{% endblock %}
